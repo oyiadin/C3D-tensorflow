@@ -116,7 +116,7 @@ def run_test():
   # Create a saver for writing training checkpoints.
   saver.restore(sess, model_name)
   # And then after everything is built, start the training loop.
-  bufsize = 0
+  bufsize = 512
   write_file = open("predict_ret.txt", "w+", bufsize)
   next_start_pos = 0
   all_steps = int((num_test_videos - 1) / (FLAGS.batch_size * gpu_num) + 1)

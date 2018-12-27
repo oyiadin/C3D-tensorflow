@@ -32,7 +32,7 @@ import random
 import cv2
 from PIL import Image
 
-labels = ['ApplyEyeMakeup', 'ApplyLipstick', 'Archery', 'BabyCrawling', 'BalanceBeam', 'BandMarching', 'BaseballPitch', 'BasketballDunk', 'Basketball', 'BenchPress', 'Biking', 'Billiards', 'BlowDryHair', 'BlowingCandles', 'BodyWeightSquats', 'Bowling', 'BoxingPunchingBag', 'BoxingSpeedBag', 'BreastStroke', 'BrushingTeeth', 'CleanAndJerk', 'CliffDiving', 'CricketBowling', 'CricketShot', 'CuttingInKitchen', 'Diving', 'Drumming', 'Fencing', 'FieldHockeyPenalty', 'FloorGymnastics', 'FrisbeeCatch', 'FrontCrawl', 'GolfSwing', 'Haircut', 'Hammering', 'HammerThrow', 'HandstandPushups', 'HandstandWalking', 'HeadMassage', 'HighJump', 'HorseRace', 'HorseRiding', 'HulaHoop', 'IceDancing', 'JavelinThrow', 'JugglingBalls', 'JumpingJack', 'JumpRope', 'Kayaking', 'Knitting', 'LongJump', 'Lunges', 'MilitaryParade', 'Mixing', 'MoppingFloor', 'Nunchucks', 'ParallelBars', 'PizzaTossing', 'PlayingCello', 'PlayingDaf', 'PlayingDhol', 'PlayingFlute', 'PlayingGuitar', 'PlayingPiano', 'PlayingSitar', 'PlayingTabla', 'PlayingViolin', 'PoleVault', 'PommelHorse', 'PullUps', 'Punch', 'PushUps', 'Rafting', 'RockClimbingIndoor', 'RopeClimbing', 'Rowing', 'SalsaSpin', 'ShavingBeard', 'Shotput', 'SkateBoarding', 'Skiing', 'Skijet', 'SkyDiving', 'SoccerJuggling', 'SoccerPenalty', 'StillRings', 'SumoWrestling', 'Surfing', 'Swing', 'TableTennisShot', 'TaiChi', 'TennisSwing', 'ThrowDiscus', 'TrampolineJumping', 'Typing', 'UnevenBars', 'VolleyballSpiking', 'WalkingWithDog', 'WallPushups', 'WritingOnBoard', 'YoYo']
+index2labels = ['ApplyEyeMakeup', 'ApplyLipstick', 'Archery', 'BabyCrawling', 'BalanceBeam', 'BandMarching', 'BaseballPitch', 'BasketballDunk', 'Basketball', 'BenchPress', 'Biking', 'Billiards', 'BlowDryHair', 'BlowingCandles', 'BodyWeightSquats', 'Bowling', 'BoxingPunchingBag', 'BoxingSpeedBag', 'BreastStroke', 'BrushingTeeth', 'CleanAndJerk', 'CliffDiving', 'CricketBowling', 'CricketShot', 'CuttingInKitchen', 'Diving', 'Drumming', 'Fencing', 'FieldHockeyPenalty', 'FloorGymnastics', 'FrisbeeCatch', 'FrontCrawl', 'GolfSwing', 'Haircut', 'Hammering', 'HammerThrow', 'HandstandPushups', 'HandstandWalking', 'HeadMassage', 'HighJump', 'HorseRace', 'HorseRiding', 'HulaHoop', 'IceDancing', 'JavelinThrow', 'JugglingBalls', 'JumpingJack', 'JumpRope', 'Kayaking', 'Knitting', 'LongJump', 'Lunges', 'MilitaryParade', 'Mixing', 'MoppingFloor', 'Nunchucks', 'ParallelBars', 'PizzaTossing', 'PlayingCello', 'PlayingDaf', 'PlayingDhol', 'PlayingFlute', 'PlayingGuitar', 'PlayingPiano', 'PlayingSitar', 'PlayingTabla', 'PlayingViolin', 'PoleVault', 'PommelHorse', 'PullUps', 'Punch', 'PushUps', 'Rafting', 'RockClimbingIndoor', 'RopeClimbing', 'Rowing', 'SalsaSpin', 'ShavingBeard', 'Shotput', 'SkateBoarding', 'Skiing', 'Skijet', 'SkyDiving', 'SoccerJuggling', 'SoccerPenalty', 'StillRings', 'SumoWrestling', 'Surfing', 'Swing', 'TableTennisShot', 'TaiChi', 'TennisSwing', 'ThrowDiscus', 'TrampolineJumping', 'Typing', 'UnevenBars', 'VolleyballSpiking', 'WalkingWithDog', 'WallPushups', 'WritingOnBoard', 'YoYo']
 
 # Basic model parameters as external flags.
 flags = tf.app.flags
@@ -40,8 +40,12 @@ gpu_num = 2
 flags.DEFINE_integer('batch_size', 10 , 'Batch size.')
 FLAGS = flags.FLAGS
 
+# the location where pretrained model lies in
 model_name = "./sports1m_finetuning_ucf101.model"
+# some hyperparameters, cannot be modified as the model has already been
+# pretrained with the values listed below
 crop_size = 112
+# loads the mean images of every single frame
 np_mean = np.load('crop_mean.npy').reshape([16, crop_size, crop_size, 3])
 
 
@@ -66,11 +70,13 @@ def placeholder_inputs(batch_size):
   labels_placeholder = tf.placeholder(tf.int64, shape=(batch_size))
   return images_placeholder, labels_placeholder
 
+
 def _variable_on_cpu(name, shape, initializer):
   #with tf.device('/cpu:%d' % cpu_id):
   with tf.device('/cpu:0'):
     var = tf.get_variable(name, shape, initializer=initializer)
   return var
+
 
 def _variable_with_weight_decay(name, shape, stddev, wd):
   var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev))
@@ -126,59 +132,64 @@ def init_ops():
   # And then after everything is built, start the training loop.
   return sess, images_placeholder, norm_score
 
+sess, X, norm_score = init_ops()
 
-def demo_main_loop(cap):
-  sess, X, norm_score = init_ops()
 
-  #############################################################################
-  #############################################################################
-  #############################################################################
+def preprocess(frame, count):
+  # preprocessing the frames so that it can suits for our pretrained model
+  img = Image.fromarray(frame.astype(np.uint8))
+  # assert img.width > img.height:
+  scale = float(crop_size) / float(img.height)
+  img = np.array(cv2.resize(np.array(img), (int(img.width * scale + 1), crop_size))).astype(np.float32)
+  # scaling the image so that we can get a new image with the same width and height
 
-  # main loop
+  crop_x = int((img.shape[0] - crop_size)/2)
+  crop_y = int((img.shape[1] - crop_size)/2)
+  img = img[crop_x:crop_x+crop_size, crop_y:crop_y+crop_size, :] - np_mean[count]
+  # crop the image
+  return img
+
+def demo_realtime_loop(cap):
   top1_predicted_label = 'None'
   while True:
-    img_datas = []
+    preprocessed_images = []
 
     # reads frames from the camera and accumulate them until we have 16 frames
-    for step in range(2*16):
+    for step in range(16):
       ret, frame = cap.read()
       while not ret:
         print('cannot read correctly, retrying')
         ret, frame = cap.read()
 
-      if not step % 2:
-        # preprocessing the frames so that it can suits for our pretrained model
-        img = Image.fromarray(frame.astype(np.uint8))
-        # assert img.width > img.height:
-        scale = float(crop_size) / float(img.height)
-        img = np.array(cv2.resize(np.array(img), (int(img.width * scale + 1), crop_size))).astype(np.float32)
-        crop_x = int((img.shape[0] - crop_size)/2)
-        crop_y = int((img.shape[1] - crop_size)/2)
-        img = img[crop_x:crop_x+crop_size, crop_y:crop_y+crop_size, :] - np_mean[len(img_datas)]
-        img_datas.append(img)
+      preprocessed_images.append(preprocess(frame, step))
 
       font = cv2.FONT_HERSHEY_SIMPLEX
-      cv2.putText(frame, top1_predicted_label, (10, 100), font, 3, (255,255,255),5, cv2.LINE_AA, bottomLeftOrigin=False)
+      cv2.putText(
+        frame, top1_predicted_label, (10, 100), font, 3, (0,127,127), 5,
+        cv2.LINE_AA, bottomLeftOrigin=False)
 
-      cv2.imshow('frame', cv2.resize(frame, (384, 216)))
-      if cv2.waitKey(15) & 0xFF == ord('q'):
+      cv2.imshow('action detection', cv2.resize(frame, (384, 216)))
+      if cv2.waitKey(20) & 0xFF == ord('q'):
         print('goodbye')
         return
 
-    img_datas = np.array(img_datas)
+    preprocessed_images = np.array(preprocessed_images)
     # to label the last 16 frames captured by opencv2 using our model
-    zeros = np.tile(np.zeros_like(img_datas[np.newaxis, :]).T, 20).T
-    # print(zeros.shape, np.array(img_datas).shape)
+    zeros = np.tile(np.zeros_like(preprocessed_images[np.newaxis, :]).T, 20).T
+    # print(zeros.shape, np.array(preprocessed_images).shape)
     test_images = zeros
-    test_images[0] = img_datas
+    test_images[0] = preprocessed_images
     # convert to (20, 16, 112, 112, 3)
+    # as the pretrained model have to get 20-sized bunches of images
 
     start_time = time.time()
     score = norm_score.eval(
             session=sess,
             feed_dict={X: test_images}
             )[0]
-    top1_predicted_label = labels[np.argmax(score)]
+    # we passed 1 true data from camera and 19 false zero data
+    # get the first one and it will be the label of our data
+    top1_predicted_label = index2labels[np.argmax(score)]
     print('the top 1 predicted label is:', top1_predicted_label)
     print('  (It took %ds to get this result...)\n' % int(time.time() - start_time))
 
@@ -201,33 +212,27 @@ def gen_demo_video(inf, outf):
   true_labels = [i[1] for i in lines]
 
   fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-  out = cv2.VideoWriter(outf, fourcc, 16.0, (512, 288))
+  out = cv2.VideoWriter(outf, fourcc, 15.0, (512, 288))
 
-  print('init and restore the model..')
-  sess, X, norm_score = init_ops()
   all_data = []
   all_original = []
   for i in range(len(dirs)):
     print('preprocessing', dirs[i])
     preprocessed_frames = []
     original_frames = input_data.get_frames_data(dirs[i])[0][:16]
+    # for count, frame in enumerate(original_frames):
+    count = 0
     for frame in original_frames:
-      # preprocessing the frames so that it can suits for our pretrained model
-      img = Image.fromarray(frame.astype(np.uint8))
-      # assert img.width > img.height:
-      scale = float(crop_size) / float(img.height)
-      img = np.array(cv2.resize(np.array(img), (int(img.width * scale + 1), crop_size))).astype(np.float32)
-      crop_x = int((img.shape[0] - crop_size)/2)
-      crop_y = int((img.shape[1] - crop_size)/2)
-      img = img[crop_x:crop_x+crop_size, crop_y:crop_y+crop_size, :] - np_mean[len(preprocessed_frames)]
-      preprocessed_frames.append(img)
+      preprocessed_frames.append(preprocess(frame, count))
+      count += 1
+
     # print(np.array(preprocessed_frames).shape)
     all_data.append(np.array(preprocessed_frames))
     all_original.append(np.array(original_frames))
   # print(np.array(all_data).shape)
 
   print('all data have already been preprocessed')
-  print('predicting..')
+  print('running the model..')
   start_time = time.time()
   scores = norm_score.eval(
     session=sess,
@@ -236,7 +241,7 @@ def gen_demo_video(inf, outf):
   pred_labels = []
   for i in scores:
     pred_labels.append(np.argmax(i))
-    print('{:>30} : true_label = {} ; pred_label = {}'.format(
+    print('{:>30} : true_label = {:>2} ; pred_label = {:>2}'.format(
       dirs[len(pred_labels)-1].split(os.sep)[-1],
       true_labels[len(pred_labels)-1],
       pred_labels[-1]))
@@ -247,12 +252,13 @@ def gen_demo_video(inf, outf):
     print('saving: [ {:0>2} / {:0>2} ]'.format(n+1, len(all_original)))
     for frame in video:
       font = cv2.FONT_HERSHEY_SIMPLEX
-      color = (0, 255, 127) if pred_labels[n] == true_labels[n] else (255, 0, 0)
-      cv2.putText(frame, labels[pred_labels[n]], (10, 40),
+      # green when correct, otherwise red
+      color = (0, 255, 127) if int(pred_labels[n]) == int(true_labels[n]) else (0, 0, 255)
+      cv2.putText(frame, index2labels[pred_labels[n]], (10, 40),
         font, 1, color, 2, cv2.LINE_AA, bottomLeftOrigin=False)
       resized = cv2.resize(frame, (512, 288))
       out.write(resized)
-  
+
   print('saved, goodbye!')
   out.release()
 
@@ -267,13 +273,13 @@ def main(_):
       print('* python3 demo.py gen_list in_file out_file')
       print('* python3 demo.py demo_video in_file out_file')
       print('* python3 demo.py')
-      print('  (this will capture images from your camera)')
+      print('  (running without any arguments will capture images directly from your camera)')
     else:
       print('unknown option, run `python3 demo.py help`')
   else:
     try:
       cap = cv2.VideoCapture(0)
-      demo_main_loop(cap)
+      demo_realtime_loop(cap)
     except KeyboardInterrupt:
       print('goodbye')
     cap.release()
